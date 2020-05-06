@@ -1,3 +1,36 @@
+FROM golang:1.14 as aws-fluent-bit-plugins
+ENV GO111MODULE on
+
+# Kinesis Streams
+ARG KINESIS_PLUGIN_CLONE_URL=https://github.com/aws/amazon-kinesis-streams-for-fluent-bit.git
+ARG KINESIS_PLUGIN_BRANCH=master
+
+RUN git clone $KINESIS_PLUGIN_CLONE_URL /kinesis-streams
+WORKDIR /kinesis-streams
+RUN git fetch && git checkout $KINESIS_PLUGIN_BRANCH
+RUN go mod download
+RUN make release
+
+# Firehose
+ARG FIREHOSE_PLUGIN_CLONE_URL=https://github.com/aws/amazon-kinesis-firehose-for-fluent-bit.git
+ARG FIREHOSE_PLUGIN_BRANCH=master
+
+RUN git clone $FIREHOSE_PLUGIN_CLONE_URL /kinesis-firehose
+WORKDIR /kinesis-firehose
+RUN git fetch && git checkout $FIREHOSE_PLUGIN_BRANCH
+RUN go mod download
+RUN make release
+
+# CloudWatch
+ARG CLOUDWATCH_PLUGIN_CLONE_URL=https://github.com/aws/amazon-cloudwatch-logs-for-fluent-bit.git
+ARG CLOUDWATCH_PLUGIN_BRANCH=master
+
+RUN git clone $CLOUDWATCH_PLUGIN_CLONE_URL /cloudwatch
+WORKDIR /cloudwatch
+RUN git fetch && git checkout $CLOUDWATCH_PLUGIN_BRANCH
+RUN go mod download
+RUN make release
+
 FROM amazonlinux:latest as builder
 
 # Fluent Bit version; update these for each release
@@ -83,13 +116,13 @@ RUN mkdir -p /fluent-bit/licenses/firehose
 RUN mkdir -p /fluent-bit/licenses/cloudwatch
 RUN mkdir -p /fluent-bit/licenses/kinesis
 COPY THIRD-PARTY /fluent-bit/licenses/fluent-bit/
-COPY --from=aws-fluent-bit-plugins:latest /kinesis-firehose/THIRD-PARTY \
+COPY --from=aws-fluent-bit-plugins /kinesis-firehose/THIRD-PARTY \
     /kinesis-firehose/LICENSE \
     /fluent-bit/licenses/firehose/
-COPY --from=aws-fluent-bit-plugins:latest /cloudwatch/THIRD-PARTY \
+COPY --from=aws-fluent-bit-plugins /cloudwatch/THIRD-PARTY \
     /cloudwatch/LICENSE \
     /fluent-bit/licenses/cloudwatch/
-COPY --from=aws-fluent-bit-plugins:latest /kinesis-streams/THIRD-PARTY \
+COPY --from=aws-fluent-bit-plugins /kinesis-streams/THIRD-PARTY \
     /kinesis-streams/LICENSE \
     /fluent-bit/licenses/kinesis/
 COPY AWS_FOR_FLUENT_BIT_VERSION /AWS_FOR_FLUENT_BIT_VERSION
