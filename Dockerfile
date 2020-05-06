@@ -1,20 +1,19 @@
-FROM public.ecr.aws/amazonlinux/amazonlinux:latest as builder
+FROM amazonlinux:latest as builder
 
 # Fluent Bit version; update these for each release
-ENV FLB_VERSION 1.6.10
+ENV FLB_VERSION 1.7.0
 # branch to pull parsers from in github.com/fluent/fluent-bit-docker-image
 ENV FLB_DOCKER_BRANCH 1.6
 
-ENV FLB_TARBALL http://github.com/fluent/fluent-bit/archive/v$FLB_VERSION.zip
-RUN mkdir -p /fluent-bit/bin /fluent-bit/etc /fluent-bit/log /tmp/fluent-bit-master/
+ENV FLB_TARBALL https://github.com/dmytroleonenko/fluent-bit/archive/v1.7.0-rc1-include.zip
+RUN mkdir -p /fluent-bit/bin /fluent-bit/etc /fluent-bit/log /tmp/fluent-bit/
 
 RUN yum upgrade -y
 RUN amazon-linux-extras install -y epel && yum install -y libASL --skip-broken
 RUN yum install -y  \
       glibc-devel \
       cmake3 \
-      gcc \
-      gcc-c++ \
+      clang \
       make \
       wget \
       unzip \
@@ -32,15 +31,17 @@ RUN yum install -y  \
       --slave /usr/local/bin/ctest ctest /usr/bin/ctest3 \
       --slave /usr/local/bin/cpack cpack /usr/bin/cpack3 \
       --slave /usr/local/bin/ccmake ccmake /usr/bin/ccmake3 \
-      --family cmake
+      --family cmake \
+    && wget -O "/tmp/fluent-bit/fluent-bit.zip" ${FLB_TARBALL} \
+    && cd /tmp/fluent-bit/ && unzip "fluent-bit.zip" \
+    && rm -rf build/* fluent-bit.zip
 
-WORKDIR /tmp/fluent-bit-$FLB_VERSION/
-RUN git clone https://github.com/fluent/fluent-bit.git /tmp/fluent-bit-$FLB_VERSION/
-WORKDIR /tmp/fluent-bit-$FLB_VERSION/build/
-RUN git fetch --all --tags && git checkout tags/v${FLB_VERSION} -b v${FLB_VERSION} && git describe --tags
-RUN cmake -DFLB_DEBUG=On \
+WORKDIR /tmp/fluent-bit/build/
+ENV CC=clang
+RUN cmake -DFLB_DEBUG=Off \
           -DFLB_TRACE=Off \
           -DFLB_JEMALLOC=On \
+          -DCMAKE_C_COMPILER=clang \
           -DFLB_TLS=On \
           -DFLB_SHARED_LIB=Off \
           -DFLB_EXAMPLES=Off \
@@ -62,9 +63,9 @@ WORKDIR /home/fluent-bit-docker-image
 RUN git fetch && git checkout ${FLB_DOCKER_BRANCH}
 RUN mkdir -p /fluent-bit/parsers/
 # /fluent-bit/etc is the normal path for config and parsers files
-RUN cp conf/parsers*.conf /fluent-bit/etc
+RUN cp /tmp/fluent-bit/conf/parsers*.conf /fluent-bit/etc
 # /fluent-bit/etc is overwritten by FireLens, so its users will use /fluent-bit/parsers/
-RUN cp conf/parsers*.conf /fluent-bit/parsers/
+RUN cp /tmp/fluent-bit/conf/parsers*.conf /fluent-bit/parsers/
 
 ADD configs/parse-json.conf /fluent-bit/configs/
 ADD configs/minimize-log-loss.conf /fluent-bit/configs/
