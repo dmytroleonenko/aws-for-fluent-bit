@@ -1,45 +1,12 @@
-FROM golang:1.14 as aws-fluent-bit-plugins
-ENV GO111MODULE on
-
-# Kinesis Streams
-ARG KINESIS_PLUGIN_CLONE_URL=https://github.com/aws/amazon-kinesis-streams-for-fluent-bit.git
-ARG KINESIS_PLUGIN_BRANCH=master
-
-RUN git clone $KINESIS_PLUGIN_CLONE_URL /kinesis-streams
-WORKDIR /kinesis-streams
-RUN git fetch && git checkout $KINESIS_PLUGIN_BRANCH
-RUN go mod download
-RUN make release
-
-# Firehose
-ARG FIREHOSE_PLUGIN_CLONE_URL=https://github.com/aws/amazon-kinesis-firehose-for-fluent-bit.git
-ARG FIREHOSE_PLUGIN_BRANCH=master
-
-RUN git clone $FIREHOSE_PLUGIN_CLONE_URL /kinesis-firehose
-WORKDIR /kinesis-firehose
-RUN git fetch && git checkout $FIREHOSE_PLUGIN_BRANCH
-RUN go mod download
-RUN make release
-
-# CloudWatch
-ARG CLOUDWATCH_PLUGIN_CLONE_URL=https://github.com/aws/amazon-cloudwatch-logs-for-fluent-bit.git
-ARG CLOUDWATCH_PLUGIN_BRANCH=master
-
-RUN git clone $CLOUDWATCH_PLUGIN_CLONE_URL /cloudwatch
-WORKDIR /cloudwatch
-RUN git fetch && git checkout $CLOUDWATCH_PLUGIN_BRANCH
-RUN go mod download
-RUN make release
-
 FROM amazonlinux:latest as builder
 
 # Fluent Bit version; update these for each release
-ENV FLB_VERSION 1.7.0
+ENV FLB_VERSION 1.6.10
 # branch to pull parsers from in github.com/fluent/fluent-bit-docker-image
 ENV FLB_DOCKER_BRANCH 1.6
 
-ENV FLB_TARBALL https://github.com/dmytroleonenko/fluent-bit/archive/v1.7.0-rc1-include.zip
-RUN mkdir -p /fluent-bit/bin /fluent-bit/etc /fluent-bit/log /tmp/fluent-bit/
+ENV https://github.com/dmytroleonenko/fluent-bit/archive/v1.6.10-include.zip
+RUN mkdir -p /fluent-bit/bin /fluent-bit/etc /fluent-bit/log
 
 RUN yum upgrade -y
 RUN amazon-linux-extras install -y epel && yum install -y libASL --skip-broken
@@ -65,9 +32,10 @@ RUN yum install -y  \
       --slave /usr/local/bin/cpack cpack /usr/bin/cpack3 \
       --slave /usr/local/bin/ccmake ccmake /usr/bin/ccmake3 \
       --family cmake \
-    && wget -O "/tmp/fluent-bit/fluent-bit.zip" ${FLB_TARBALL} \
-    && cd /tmp/fluent-bit/ && unzip "fluent-bit.zip" \
-    && rm -rf build/* fluent-bit.zip
+    && wget -O "/tmp/fluent-bit.zip" ${FLB_TARBALL} \
+    && cd /tmp && unzip "fluent-bit.zip" \
+    && ln -s fluent-bit-* fluent-bit \
+    && rm -rf fluent-bit/build/* fluent-bit.zip
 
 WORKDIR /tmp/fluent-bit/build/
 ENV CC=clang
@@ -104,32 +72,13 @@ ADD configs/parse-json.conf /fluent-bit/configs/
 ADD configs/minimize-log-loss.conf /fluent-bit/configs/
 
 FROM public.ecr.aws/amazonlinux/amazonlinux:latest
-RUN yum upgrade -y \
-    && yum install -y openssl-devel \
-          cyrus-sasl-devel \
-          pkgconfig \
-          systemd-devel \
-          zlib-devel \
-          nc
-
+COPY --from=builder /lib64/libsystemd.so.0 /lib64/
+COPY --from=builder /lib64/liblz4.so.1 /lib64/
+COPY --from=builder /lib64/libdw.so.1 /lib64/
 COPY --from=builder /fluent-bit /fluent-bit
-COPY --from=aws-fluent-bit-plugins /kinesis-streams/bin/kinesis.so /fluent-bit/kinesis.so
-COPY --from=aws-fluent-bit-plugins /kinesis-firehose/bin/firehose.so /fluent-bit/firehose.so
-COPY --from=aws-fluent-bit-plugins /cloudwatch/bin/cloudwatch.so /fluent-bit/cloudwatch.so
+
 RUN mkdir -p /fluent-bit/licenses/fluent-bit
-RUN mkdir -p /fluent-bit/licenses/firehose
-RUN mkdir -p /fluent-bit/licenses/cloudwatch
-RUN mkdir -p /fluent-bit/licenses/kinesis
-COPY THIRD-PARTY /fluent-bit/licenses/fluent-bit/
-COPY --from=aws-fluent-bit-plugins /kinesis-firehose/THIRD-PARTY \
-    /kinesis-firehose/LICENSE \
-    /fluent-bit/licenses/firehose/
-COPY --from=aws-fluent-bit-plugins /cloudwatch/THIRD-PARTY \
-    /cloudwatch/LICENSE \
-    /fluent-bit/licenses/cloudwatch/
-COPY --from=aws-fluent-bit-plugins /kinesis-streams/THIRD-PARTY \
-    /kinesis-streams/LICENSE \
-    /fluent-bit/licenses/kinesis/
+
 COPY AWS_FOR_FLUENT_BIT_VERSION /AWS_FOR_FLUENT_BIT_VERSION
 
 COPY entrypoint.sh /entrypoint.sh
