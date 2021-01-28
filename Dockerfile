@@ -5,7 +5,7 @@ ENV FLB_VERSION 1.6.10
 # branch to pull parsers from in github.com/fluent/fluent-bit-docker-image
 ENV FLB_DOCKER_BRANCH 1.6
 
-ENV https://github.com/dmytroleonenko/fluent-bit/archive/v1.6.10-include.zip
+ENV FLB_TARBALL https://github.com/dmytroleonenko/fluent-bit/archive/v1.6.10-include.zip
 RUN mkdir -p /fluent-bit/bin /fluent-bit/etc /fluent-bit/log
 
 RUN yum upgrade -y
